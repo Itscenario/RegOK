@@ -1,3 +1,4 @@
+import type { EventOption } from '../storage/event';
 import type { RegistrationDetails } from '../types/registration';
 import type { ScanRecord, ServiceId } from '../types/services';
 import type { ServiceUser } from '../auth/users';
@@ -13,7 +14,8 @@ export type RootStackParamList = {
       }
     | undefined;
   [ROUTES.SERVICE_DETAILS]: { serviceId: ServiceId; records: ScanRecord[] };
-  [ROUTES.LOGIN]: undefined;
+  [ROUTES.EVENT_SELECTION]: undefined;
+  [ROUTES.LOGIN]: { event?: EventOption } | undefined;
   [ROUTES.HOME]: { user: ServiceUser };
 };
 

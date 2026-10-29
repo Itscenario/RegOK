@@ -1,3 +1,4 @@
+import { getSelectedEvent, type EventOption } from '../../storage/event';
 import { useToast } from '../../components/ToastProvider';
 import { loginService, parseUserFromApiResponse } from '../../config/backend';
 import { typography } from '../../theme/typography';
@@ -5,7 +6,7 @@ import { AppText, AppButton } from '../../components';
 import { colors } from '../../theme/colors';
 import UserIcon from '../../components/UserIcon';
 import EyeIcon from '../../components/EyeIcon';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   KeyboardAvoidingView,
@@ -21,12 +22,32 @@ import { saveLoginSession } from '../../storage/session';
 import { ROUTES } from '../../navigation/routes';
 import type { ScreenProps } from '../../navigation/types';
 
-export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
+export default function LoginScreen({
+  navigation,
+  route,
+}: ScreenProps<'Login'>) {
   const showToast = useToast();
+  const [selectedEvent, setSelectedEvent] = useState<EventOption | null>(
+    route.params?.event ?? null,
+  );
+  useEffect(() => {
+    let active = true;
+    getSelectedEvent()
+      .then(event => {
+        if (active) {
+          setSelectedEvent(event);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [visible, setVisible] = useState(false);
   const [focused, setFocused] = useState<'username' | 'password' | null>(null);
+  const [, setAccountError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const passwordRef = useRef<React.ComponentRef<typeof TextInput>>(null);
@@ -43,6 +64,7 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
     if (submittingRef.current) {
       return;
     }
+    setAccountError('');
     submittingRef.current = true;
     setIsSubmitting(true);
 
@@ -51,10 +73,15 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
       console.log('login Respones', response);
 
       if (response && response.status_api) {
+        const user = parseUserFromApiResponse(trimmedEmail, response);
+        console.log('Login access:', {
+          username: user.username,
+          roles: user.roles,
+          feature: user.feature,
+        });
         if (response.Data) {
           await AsyncStorage.setItem('userdata', JSON.stringify(response.Data));
         }
-        const user = parseUserFromApiResponse(trimmedEmail, response);
         if (user) {
           await saveLoginSession(user);
         }
@@ -62,11 +89,18 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
         navigation.replace(ROUTES.HOME, { user });
       } else {
         const message = response?.status_msg || 'Invalid username or password.';
+        setAccountError(message);
         showToast(message, 'error');
       }
     } catch (error) {
       console.log('Login error:', error);
-      showToast('Unable to log in. Please try again.', 'error');
+      showToast(
+        error instanceof Error
+          ? error.message
+          : 'Unable to log in. Please try again.',
+        'error',
+      );
+      setAccountError('Something went wrong. Please try again.');
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -115,6 +149,24 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
                 </View>
               </View>
 
+              {!!selectedEvent && (
+                <View style={styles.eventRow}>
+                  <View style={styles.eventInfo}>
+                    <AppText style={styles.eventLabel}>SELECTED EVENT</AppText>
+                    <AppText style={styles.eventName}>
+                      {selectedEvent.name}
+                    </AppText>
+                  </View>
+                  <AppButton
+                    title="Change"
+                    accessibilityLabel="Change event"
+                    disabled={isSubmitting}
+                    onPress={() => navigation.replace(ROUTES.EVENT_SELECTION)}
+                    style={styles.changeEvent}
+                  />
+                </View>
+              )}
+
               <View style={styles.card}>
                 <View style={styles.cardHeading}>
                   <View>
@@ -148,6 +200,7 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
                     value={username}
                     onChangeText={value => {
                       setUsername(value);
+                      setAccountError('');
                     }}
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -202,6 +255,7 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
                     <EyeIcon crossed={visible} />
                   </AppButton>
                 </View>
+
                 <AppButton
                   accessibilityRole="button"
                   variant="primary"
@@ -220,7 +274,7 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
                   ]}
                 >
                   <AppText style={styles.submitText}>
-                    Sign in
+                    {isSubmitting ? 'Signing in…' : 'Sign in'}
                   </AppText>
                   <AppText style={styles.submitArrow}>→</AppText>
                 </AppButton>
@@ -375,7 +429,6 @@ const styles = StyleSheet.create({
     marginBottom: 9,
   },
   inputWrap: {
-    marginBottom: 18,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
@@ -421,8 +474,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 5,
   },
-  submitLoading: { justifyContent: 'center' },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  eventInfo: { flex: 1 },
+  eventLabel: {
+    color: colors.primary,
+    fontSize: typography.size.s9,
+    letterSpacing: 1.5,
+    marginBottom: 5,
+  },
+  eventName: {
+    color: colors.white,
+    fontSize: typography.size.s16,
+    fontWeight: typography.weight.bold,
+  },
+  changeEvent: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
   submitPressed: { opacity: 0.75 },
+  submitLoading: { justifyContent: 'center' },
   submitText: {
     color: colors.buttonText,
     fontSize: typography.size.s16,

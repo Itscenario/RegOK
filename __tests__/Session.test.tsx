@@ -1,3 +1,4 @@
+import { selectEvent } from '../src/storage/event';
 import { findServiceUser } from '../src/auth/users';
 import React from 'react';
 import { Text } from 'react-native';
@@ -35,19 +36,37 @@ async function restoredRoute() {
   return route;
 }
 
-test('opens Login on a fresh install', async () => {
+test('opens event selection on a fresh install', async () => {
+  expect(await restoredRoute()).toBe('EventSelection');
+});
+
+const event = { id: 'corporate-event', name: 'Corporate Event' };
+
+test('skips event selection and opens Login after selecting once', async () => {
+  await selectEvent(event);
   expect(await restoredRoute()).toBe('Login');
 });
 
-test('restores Home on a new app mount after login without saving credentials', async () => {
-  const user = findServiceUser('kit')!;
+test('restores Home after restart with saved event and session', async () => {
+  await selectEvent(event);
+  const user = findServiceUser('kit_user')!;
   await saveLoginSession(user);
   expect(await getLoginSession()).toEqual(user);
   expect(JSON.stringify(await getLoginSession())).not.toContain('upwd');
   expect(await restoredRoute()).toBe('Home');
 });
 
-test('opens Login when storage cannot be read', async () => {
+test('opens event selection when selected event cannot be read', async () => {
+  jest
+    .mocked(AsyncStorage.getItem)
+    .mockRejectedValueOnce(new Error('unavailable'));
+  expect(await restoredRoute()).toBe('EventSelection');
+});
+
+test('keeps selected event and opens Login if session storage fails', async () => {
+  await selectEvent(event);
+  const selected = JSON.stringify(event);
+  jest.mocked(AsyncStorage.getItem).mockResolvedValueOnce(selected);
   jest
     .mocked(AsyncStorage.getItem)
     .mockRejectedValueOnce(new Error('unavailable'));
@@ -57,32 +76,33 @@ test('opens Login when storage cannot be read', async () => {
 test.each([
   'true',
   '{broken',
-  JSON.stringify({
-    username: 'kit_user',
-    feature: 'scan' as const,
-    service: 'dinner',
-  }),
-])('rejects incomplete or mismatched session %s', async value => {
-  await AsyncStorage.setItem('@RegOK/session', value);
-  expect(await restoredRoute()).toBe('Login');
-});
+  JSON.stringify({ username: 'kit_user', feature: 'scan', service: 'dinner' }),
+])(
+  'rejects invalid session while retaining selected event: %s',
+  async value => {
+    await selectEvent(event);
+    await AsyncStorage.setItem('@RegOK/session/event/corporate-event', value);
+    expect(await restoredRoute()).toBe('Login');
+  },
+);
 
 test.each(['kit', 'dinner', 'lunch'] as const)(
-  'restores the assigned %s service after restart',
+  'restores %s session then skips event selection after logout',
   async service => {
-    const user = findServiceUser(service)!;
+    await selectEvent(event);
+    const user = findServiceUser(`${service}_user`)!;
     await saveLoginSession(user);
     expect(await getLoginSession()).toEqual(user);
+    expect(await restoredRoute()).toBe('Home');
     await clearLoginSession();
     expect(await getLoginSession()).toBeNull();
     expect(await restoredRoute()).toBe('Login');
   },
 );
 
-test('local demo login is restored without an API', async () => {
-  await AsyncStorage.setItem(
-    '@RegOK/session',
-    JSON.stringify({ username: 'kit_user', feature: 'scan', service: 'kit' }),
-  );
-  expect(await restoredRoute()).toBe('Home');
+test('does not reuse another event session', async () => {
+  await selectEvent(event);
+  await saveLoginSession(findServiceUser('kit_user')!);
+  await selectEvent({ id: 'medical-conference', name: 'Medical Conference' });
+  expect(await restoredRoute()).toBe('Login');
 });

@@ -1,3 +1,4 @@
+import { eventStorageKey } from './event';
 import { readQrPayload, qrField } from '../utils/qrPayload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ScanRecord, ServiceId } from '../types/services';
@@ -29,7 +30,9 @@ export function qrIdentity(value: string): string {
 export async function getScanHistory(
   service: ServiceId,
 ): Promise<ScanRecord[]> {
-  const stored = await AsyncStorage.getItem(key(service));
+  const stored = await AsyncStorage.getItem(
+    await eventStorageKey(key(service)),
+  );
   if (!stored) {
     return [];
   }
@@ -72,7 +75,10 @@ export function recordScan(service: ServiceId, value: string) {
       scannedAt: now.toISOString(),
     };
     const updated = [record, ...history];
-    await AsyncStorage.setItem(key(service), JSON.stringify(updated));
+    await AsyncStorage.setItem(
+      await eventStorageKey(key(service)),
+      JSON.stringify(updated),
+    );
     return { status: 'success' as const, record, history: updated };
   });
   pending = task.catch(() => undefined);

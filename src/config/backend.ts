@@ -1,9 +1,5 @@
 import { API_END_POINTS, API_ROUTES } from './routes';
-import {
-  findServiceUser,
-  registerAuthenticatedUser,
-  type ServiceUser,
-} from '../auth/users';
+import { userFromRoles, type ServiceUser } from '../auth/users';
 
 // 1. Resolve BASE_URL from environment / .env
 let rawBaseUrl = 'https://demo.itscenario.in/spotqr/beta/';
@@ -29,15 +25,21 @@ export const BACKEND = {
 } as const;
 
 // Helper to construct full URL for an endpoint
-export function buildUrl(endpoint: string, params?: Record<string, any>): string {
-  let url = endpoint.startsWith('http://') || endpoint.startsWith('https://')
-    ? endpoint
-    : `${BASE_URL}${endpoint.replace(/^\/+/, '')}`;
+export function buildUrl(
+  endpoint: string,
+  params?: Record<string, any>,
+): string {
+  let url =
+    endpoint.startsWith('http://') || endpoint.startsWith('https://')
+      ? endpoint
+      : `${BASE_URL}${endpoint.replace(/^\/+/, '')}`;
 
   if (params && Object.keys(params).length > 0) {
     const query = Object.entries(params)
       .filter(([_, v]) => v !== undefined && v !== null)
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .map(
+        ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+      )
       .join('&');
     if (query) {
       url += (url.includes('?') ? '&' : '?') + query;
@@ -73,7 +75,9 @@ export async function get<T = any>(
     try {
       return JSON.parse(rawText) as T;
     } catch {
-      throw new Error(`Server returned invalid JSON (Status: ${response.status})`);
+      throw new Error(
+        `Server returned invalid JSON (Status: ${response.status})`,
+      );
     }
   } finally {
     clearTimeout(timer);
@@ -93,7 +97,8 @@ export async function post<T = any>(
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    const isFormData =
+      typeof FormData !== 'undefined' && body instanceof FormData;
     const requestHeaders: Record<string, string> = {
       Accept: 'application/json',
       ...headers,
@@ -116,7 +121,9 @@ export async function post<T = any>(
     try {
       return JSON.parse(rawText) as T;
     } catch {
-      throw new Error(`Server returned invalid JSON (Status: ${response.status})`);
+      throw new Error(
+        `Server returned invalid JSON (Status: ${response.status})`,
+      );
     }
   } finally {
     clearTimeout(timer);
@@ -146,7 +153,6 @@ export async function loginApi(
   usernameOrPayload: any,
   maybePassword?: any,
 ): Promise<LoginApiResponse> {
-
   const username =
     typeof usernameOrPayload === 'string'
       ? usernameOrPayload
@@ -157,17 +163,17 @@ export async function loginApi(
       ? maybePassword
       : usernameOrPayload?.password;
 
-  return post<LoginApiResponse>(
-    API_END_POINTS.Get_Login,
-    {
-      uname: username ?? '',
-      upwd: password ?? '',
-    }
-  );
+  return post<LoginApiResponse>(API_END_POINTS.Get_Login, {
+    uname: username ?? '',
+    upwd: password ?? '',
+  });
 }
 
 export const loginService = {
-  login: async (emailOrUsername: any, password: any): Promise<LoginApiResponse> => {
+  login: async (
+    emailOrUsername: any,
+    password: any,
+  ): Promise<LoginApiResponse> => {
     return loginApi(emailOrUsername, password);
   },
 };
@@ -178,26 +184,7 @@ export function parseUserFromApiResponse(
 ): ServiceUser {
   const raw = Array.isArray(res?.Data) ? res.Data[0] : res?.Data;
   const uname = raw?.UserName || raw?.username || username || 'user';
-  const local = findServiceUser(uname);
-  if (local) {
-    return local;
-  }
-
-  const role = String(raw?.role || raw?.service || '').toLowerCase();
-  let user: ServiceUser;
-  if (role.includes('kit') || role.includes('lunch') || role.includes('dinner')) {
-    const service = role.includes('kit') ? 'kit' : role.includes('dinner') ? 'dinner' : 'lunch';
-    user = { username: uname, feature: 'scan', service };
-  } else if (role.includes('badge')) {
-    user = { username: uname, feature: 'badge' };
-  } else if (role.includes('spot')) {
-    user = { username: uname, feature: 'spot' };
-  } else {
-    user = { username: uname, feature: 'details' };
-  }
-
-  registerAuthenticatedUser(user);
-  return user;
+  return userFromRoles(uname, raw?.role);
 }
 
 export { API_END_POINTS, API_ROUTES };

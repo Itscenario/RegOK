@@ -1,5 +1,10 @@
 import ScanResult from '../components/ScanResult';
-import { resolveUser, type ServiceUser } from '../auth/users';
+import {
+  resolveUser,
+  allowedServices,
+  canUseFeature,
+  type ServiceUser,
+} from '../auth/users';
 import LogoutModal from '../components/LogoutModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SpotRegistrationScreen from '../screens/SpotRegistration/SpotRegistrationScreen';
@@ -42,22 +47,25 @@ function FeatureTabs({
   user: ServiceUser;
   navigation: ScreenProps<'Home'>['navigation'];
 }) {
-  const assignedService = user.feature === 'scan' ? user.service : null;
-  const defaultTab =
-    user.feature === 'scan'
-      ? 'Scan'
-      : user.feature === 'badge'
-      ? 'Badge Print'
-      : user.feature === 'spot'
-      ? 'Spot Registration'
-      : 'Details';
+  const services = allowedServices(user);
+  const servicesKey = services.join('|');
   type TabName = 'Scan' | 'Badge Print' | 'Spot Registration' | 'Details';
-  const [detailsTab, setDetailsTab] = useState<TabName>('Details');
-  const tab = user.feature === 'details' ? detailsTab : defaultTab;
-  const visibleTabs: TabName[] =
-    user.feature === 'details'
-      ? ['Scan', 'Badge Print', 'Spot Registration', 'Details']
-      : [defaultTab];
+  const visibleTabs: TabName[] = [];
+  if (canUseFeature(user, 'scan')) {
+    visibleTabs.push('Scan');
+  }
+  if (canUseFeature(user, 'badge')) {
+    visibleTabs.push('Badge Print');
+  }
+  if (canUseFeature(user, 'spot')) {
+    visibleTabs.push('Spot Registration');
+  }
+  if (canUseFeature(user, 'details')) {
+    visibleTabs.push('Details');
+  }
+  const defaultTab = user.feature === 'details' ? 'Details' : visibleTabs[0];
+  const [selectedTab, setSelectedTab] = useState<TabName>(defaultTab);
+  const tab = visibleTabs.includes(selectedTab) ? selectedTab : defaultTab;
   const [logoutVisible, setLogoutVisible] = useState(false);
   const [service, setService] = useState<ServiceId | null>(null);
   const [records, setRecords] = useState<ScanRecord[]>([]);
@@ -72,12 +80,9 @@ function FeatureTabs({
   useEffect(() => {
     let mounted = true;
     historyReady.current = false;
-    const servicesToLoad: ServiceId[] =
-      user.feature === 'details'
-        ? ['kit', 'dinner', 'lunch']
-        : assignedService
-        ? [assignedService]
-        : [];
+    const servicesToLoad = servicesKey
+      .split('|')
+      .filter(Boolean) as ServiceId[];
     if (!servicesToLoad.length) {
       return;
     }
@@ -100,12 +105,12 @@ function FeatureTabs({
     return () => {
       mounted = false;
     };
-  }, [assignedService, user.feature]);
+  }, [servicesKey]);
 
   async function addScan(value: string) {
     if (
       !service ||
-      (user.feature !== 'details' && service !== assignedService) ||
+      !services.includes(service) ||
       processingScan.current ||
       !historyReady.current
     ) {
@@ -156,7 +161,7 @@ function FeatureTabs({
       return;
     }
     setScanFeedback(null);
-    if (user.feature === 'details' || selected === assignedService) {
+    if (services.includes(selected)) {
       setService(selected);
     }
   }
@@ -199,7 +204,7 @@ function FeatureTabs({
       ) : tab === 'Badge Print' ? (
         <BadgeScreen
           onEditBadge={item => {
-            if (user.feature !== 'badge' && user.feature !== 'details') {
+            if (!canUseFeature(user, 'badge')) {
               return;
             }
             navigation.navigate(ROUTES.REGISTRATION_EDIT, {
@@ -209,8 +214,7 @@ function FeatureTabs({
             });
           }}
         />
-      ) : (user.feature === 'scan' || user.feature === 'details') &&
-        tab === 'Scan' ? (
+      ) : canUseFeature(user, 'scan') && tab === 'Scan' ? (
         <HomeScreen
           user={user}
           onSelect={openScanner}
@@ -222,7 +226,7 @@ function FeatureTabs({
       ) : (
         <DetailsScreen
           onViewDetails={selected => {
-            if (user.feature !== 'details') {
+            if (!canUseFeature(user, 'details')) {
               return;
             }
             navigation.navigate(ROUTES.SERVICE_DETAILS, {
@@ -245,9 +249,7 @@ function FeatureTabs({
             accessibilityLabel={`${name} tab`}
             accessibilityState={{ selected: tab === name }}
             onPress={() => {
-              if (user.feature === 'details') {
-                setDetailsTab(name);
-              }
+              setSelectedTab(name);
             }}
             style={styles.tab}
           >

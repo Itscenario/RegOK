@@ -8,12 +8,8 @@ import { loginService } from '../src/config/backend';
 import type { ScreenProps } from '../src/navigation/types';
 
 jest.mock('../src/config/backend', () => ({
+  ...jest.requireActual('../src/config/backend'),
   loginService: { login: jest.fn() },
-  parseUserFromApiResponse: jest.fn(() => ({
-    username: 'kit',
-    feature: 'scan',
-    service: 'kit',
-  })),
 }));
 beforeEach(() => jest.clearAllMocks());
 
@@ -23,7 +19,7 @@ test.each([true, false])(
     jest.mocked(loginService.login).mockResolvedValueOnce({
       status_api: success,
       status_msg: success ? 'Login success' : 'Invalid username or password',
-      Data: success ? [{ UserName: 'kit' }] : [],
+      Data: success ? [{ Name: 'Kit', UserName: 'kit', id: 1, role: '4' }] : [],
     });
     const replace = jest.fn();
     let app!: ReactTestRenderer.ReactTestRenderer;
@@ -65,7 +61,9 @@ test.each([true, false])(
       success ? 'Login successful!' : 'Invalid username or password',
     );
     if (success) {
-      expect(replace).toHaveBeenCalledWith('Home', expect.any(Object));
+      expect(replace).toHaveBeenCalledWith('Home', {
+        user: { username: 'kit', feature: 'scan', service: 'kit', roles: [4] },
+      });
     } else {
       expect(replace).not.toHaveBeenCalled();
     }

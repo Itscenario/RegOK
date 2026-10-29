@@ -1,4 +1,4 @@
-import type { ScanUser, ServiceUser } from '../../auth/users';
+import { allowedServices, type ServiceUser } from '../../auth/users';
 import { typography } from '../../theme/typography';
 import { AppText, AppButton } from '../../components';
 import { colors } from '../../theme/colors';
@@ -38,7 +38,7 @@ const services = [
 ] as const;
 
 type Props = {
-  user: ScanUser | Extract<ServiceUser, { feature: 'details' }>;
+  user: ServiceUser;
   onSelect: (service: ServiceId) => void;
   count: number;
   onAccountPress: () => void;
@@ -53,13 +53,13 @@ export default function HomeScreen({
   scanFeedback,
   onDismissFeedback,
 }: Props) {
+  const visibleServices = allowedServices(user);
+  const multipleServices = visibleServices.length > 1;
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" />
       <FlatList
-        data={services.filter(
-          item => user.feature === 'details' || item.id === user.service,
-        )}
+        data={services.filter(item => visibleServices.includes(item.id))}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -81,9 +81,9 @@ export default function HomeScreen({
               <View style={styles.greenDot} />
               <AppText style={styles.eyebrow}>
                 {user.username} ·{' '}
-                {user.feature === 'details'
-                  ? 'ALL SERVICES'
-                  : `${user.service.toUpperCase()} STAFF`}
+                {multipleServices
+                  ? `${visibleServices.length} SERVICES`
+                  : `${visibleServices[0]?.toUpperCase() ?? 'SCAN'} STAFF`}
               </AppText>
             </View>
             <AppText style={styles.heading}>
@@ -91,7 +91,7 @@ export default function HomeScreen({
               <AppText style={styles.headingAccent}>experiencing.</AppText>
             </AppText>
             <AppText style={styles.description}>
-              {user.feature === 'details'
+              {multipleServices
                 ? 'All event services, a scan away.'
                 : 'Your assigned service, a scan away.'}
             </AppText>
@@ -128,7 +128,7 @@ export default function HomeScreen({
                   Scan. Collect.{'\n'}You’re good to go.
                 </AppText>
                 <AppText style={styles.bannerSubtitle}>
-                  {user.feature === 'details'
+                  {multipleServices
                     ? 'Choose any service to scan a QR code.'
                     : 'Scan a QR code for your assigned service.'}
                 </AppText>
@@ -140,12 +140,12 @@ export default function HomeScreen({
             </View>
             <View style={styles.sectionRow}>
               <AppText style={styles.sectionTitle}>
-                {user.feature === 'details'
-                  ? 'All services'
-                  : 'Your assigned service'}
+                {multipleServices ? 'Your services' : 'Your assigned service'}
               </AppText>
               <AppText style={styles.sectionCount}>
-                {user.feature === 'details' ? '03 SERVICES' : '01 SERVICE'}
+                {`${String(visibleServices.length).padStart(2, '0')} ${
+                  multipleServices ? 'SERVICES' : 'SERVICE'
+                }`}
               </AppText>
             </View>
           </View>

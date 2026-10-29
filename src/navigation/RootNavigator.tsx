@@ -1,10 +1,12 @@
+import { getSelectedEvent, type EventOption } from '../storage/event';
+import { getLoginSession } from '../storage/session';
+import type { ServiceUser } from '../auth/users';
+import EventSelectionScreen from '../screens/EventSelection/EventSelectionScreen';
 import RegistrationEditScreen from '../screens/RegistrationEdit/RegistrationEditScreen';
 import ServiceDetailsScreen from '../screens/ServiceDetails/ServiceDetailsScreen';
 import { colors } from '../theme/colors';
-import type { ServiceUser } from '../auth/users';
 import React, { useEffect, useState } from 'react';
 import SplashScreen from 'react-native-splash-screen';
-import { getLoginSession } from '../storage/session';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/Login/LoginScreen';
 import MainTabs from './MainTabs';
@@ -14,53 +16,74 @@ import type { RootStackParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const [initialRoute, setInitialRoute] = useState<'Login' | 'Home' | null>(
-    null,
-  );
-
-  const [user, setUser] = useState<ServiceUser | null>(null);
+  const [startup, setStartup] = useState<{
+    route: 'EventSelection' | 'Login' | 'Home';
+    event?: EventOption;
+    user?: ServiceUser;
+  } | null>(null);
 
   useEffect(() => {
-    let mounted = true;
-    async function restoreSession() {
-      let session: ServiceUser | null = null;
+    let active = true;
+    async function restore() {
+      let event: EventOption | null = null;
       try {
-        session = await getLoginSession();
+        event = await getSelectedEvent();
       } catch {
-        // A missing or unreadable session should return to Login.
+        /* Allow selection again. */
       }
-      if (mounted) {
-        setUser(session);
-        setInitialRoute(session ? ROUTES.HOME : ROUTES.LOGIN);
+      if (!event) {
+        if (active) {
+          setStartup({ route: ROUTES.EVENT_SELECTION });
+        }
+        return;
+      }
+      let user: ServiceUser | null = null;
+      try {
+        user = await getLoginSession();
+      } catch {
+        /* Keep the event and request login. */
+      }
+      if (active) {
+        setStartup(
+          user
+            ? { route: ROUTES.HOME, event, user }
+            : { route: ROUTES.LOGIN, event },
+        );
       }
     }
-    restoreSession();
+    restore();
     return () => {
-      mounted = false;
+      active = false;
     };
   }, []);
 
   useEffect(() => {
-    if (initialRoute !== null) {
+    if (startup) {
       SplashScreen.hide();
     }
-  }, [initialRoute]);
+  }, [startup]);
 
-  if (initialRoute === null) {
+  if (!startup) {
     return null;
   }
 
   return (
-    <Stack.Navigator initialRouteName={initialRoute}>
+    <Stack.Navigator initialRouteName={startup.route}>
+      <Stack.Screen
+        name={ROUTES.EVENT_SELECTION}
+        component={EventSelectionScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name={ROUTES.LOGIN}
         component={LoginScreen}
+        initialParams={startup.event ? { event: startup.event } : undefined}
         options={{ headerShown: false }}
       />
       <Stack.Screen
         name={ROUTES.HOME}
         component={MainTabs}
-        initialParams={user ? { user } : undefined}
+        initialParams={startup.user ? { user: startup.user } : undefined}
         options={{ headerShown: false }}
       />
       <Stack.Screen
